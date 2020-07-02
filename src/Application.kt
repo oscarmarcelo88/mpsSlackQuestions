@@ -52,7 +52,7 @@ fun main(args: Array<String>) {
                     }
                 }
 
-                val myJwtToken = "xoxb-397574785314-1169530478945-ZumnUCqH9dPFKTS2k4Eg52YL"
+                val myJwtToken = null
 
                  //To retrieve all the json
                /* val response = client.get<Response>("https://slack.com/api/conversations.replies?channel=CBQPEPSA2&ts=1593597724.000200") {
