@@ -33,13 +33,6 @@ import io.ktor.server.netty.Netty
 import jdk.nashorn.internal.runtime.regexp.RegExpFactory.validate
 import java.lang.StringBuilder
 
-val algorithm = com.auth0.jwt.algorithms.Algorithm.HMAC256("secret")
-fun makeJwtVerifier(issuer: String, audience: String): JWTVerifier = JWT
-    .require(algorithm)
-    .withAudience(audience)
-    .withIssuer(issuer)
-    .build()
-
 fun main(args: Array<String>) {
 
     val server = embeddedServer(Netty, port = 8080) {
@@ -51,8 +44,7 @@ fun main(args: Array<String>) {
                         serializer = JacksonSerializer()
                     }
                 }
-
-                val myJwtToken = "xoxb-397574785314-1169530478945-ZumnUCqH9dPFKTS2k4Eg52YL"
+                val myJwtToken = null
 
                  //To retrieve all the json
                /* val response = client.get<Response>("https://slack.com/api/conversations.replies?channel=CBQPEPSA2&ts=1593597724.000200") {
@@ -60,20 +52,29 @@ fun main(args: Array<String>) {
                 }
                 call.respond(response)*/
 
-
-
                val response = client.get<Response>("https://slack.com/api/conversations.history?channel=CBQPEPSA2") {
                     header(HttpHeaders.Authorization, "Bearer $myJwtToken")
                 }
-
+                var messageTs: String
+                var messageQuestion: String
                 val sb = StringBuilder()
+
                 for (message in response.messages) {
-
-                    val response_replies = client.get<Response>("https://slack.com/api/conversations.replies?channel=CBQPEPSA2&ts="+message.ts){
+                    messageTs = message.ts
+                    messageQuestion = message.text
+                   val response_replies = client.get<Response>("https://slack.com/api/conversations.replies?channel=CBQPEPSA2&ts=$messageTs"){
                     header(HttpHeaders.Authorization, "Bearer $myJwtToken")
-                    }
+                   }
 
-                   //sb.append("\n").append(message.text)
+
+                    for ((index, message_replies) in response_replies.messages.withIndex())
+                    {
+                       if (index > 0) {
+                           if (index == 1) println("\n The question is: " + messageQuestion)   //printing once the question that have answers
+                           println(message_replies.text)
+                       }
+                        //sb.append("\n").append(message_replies.text)
+                    }
                 }
                 call.respond(sb.toString())
 
@@ -87,7 +88,7 @@ fun main(args: Array<String>) {
 @JsonIgnoreProperties(ignoreUnknown = true)  //to ignore the fields that are empty or null
 data class Response(val messages: List<Message>)
 @JsonIgnoreProperties(ignoreUnknown = true)
-class Message(val text: String, val ts: Double)
+class Message(val text: String, val ts: String)
 
 
 
