@@ -8,7 +8,7 @@ import java.sql.Connection
 
 
 
-
+/*
 fun main(args: Array<String>) {
     //an example connection to H2 DB
     // In file
@@ -51,3 +51,4 @@ object Answers: IntIdTable() {
     val question_id = integer("question_id")
 }
 
+*/
