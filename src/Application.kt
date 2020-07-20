@@ -49,63 +49,77 @@ fun main(args: Array<String>) {
                         serializer = JacksonSerializer()
                     }
                 }
+
                 val myJwtToken = null
 
-               val response = client.get<Response>("https://slack.com/api/conversations.history?channel=CBQPEPSA2") {
+                val response = client.get<Response>("https://slack.com/api/conversations.history?channel=CBQPEPSA2") {
                     header(HttpHeaders.Authorization, "Bearer $myJwtToken")
                 }
-                var messageTs: String
-                var clientMessageId: String? //to know if the message is from a user
 
                 for (message in response.messages) {  //checking every message to get the replies
-                    messageTs = message.ts
                    if (!message.client_msg_id.isNullOrEmpty())
                     {
-                        addQuestion(message.text)
+                        addQuestion(message.text, message.ts)
+                        addAnswers(message.ts, client, myJwtToken)
                     }
-
-                    /* Code to go through the responses with the ts of the Question
-                    val response_replies = client.get<Response>("https://slack.com/api/conversations.replies?channel=CBQPEPSA2&ts=$messageTs"){
-                        header(HttpHeaders.Authorization, "Bearer $myJwtToken")
-                   }
-
-                    for ((index, message_replies) in response_replies.messages.withIndex())
-                    {
-                       if (index > 0) {
-                           if (index == 1) println("\n The question is: " + message.text)   //printing once the question that have answers
-                           println(message_replies.text)
-
-                       }
-                    }*/
                 }
-
-
             }
         }
     }
     server.start(wait = true)
 }
 
+
+
 @JsonIgnoreProperties(ignoreUnknown = true)  //to ignore the fields that are empty or null
 data class Response(val messages: List<Message>)
 @JsonIgnoreProperties(ignoreUnknown = true)
 class Message(val text: String, val ts: String, val client_msg_id: String?) //we use the clientMessageID to know if it was sent by a user
 
-
+//Create the Tables
 object Questions: IntIdTable() {
     val text = text("text")
+    val timestamp = varchar("timestamp", 25)
+    val posted = bool("posted")
 }
-
 object Answers: IntIdTable() {
     val answer_text = text("answer_text")
-    val question_id = integer("question_id")
+    val question_id = text("question_id") //which is the timestamp of the Question
 }
 
-fun addQuestion (question: String){
+
+suspend fun addAnswers(timestamp: String, client: HttpClient, token: String) {
+    val response_replies = client.get<Response>("https://slack.com/api/conversations.replies?channel=CBQPEPSA2&ts=$timestamp"){
+        header(HttpHeaders.Authorization, "Bearer $token")
+    }
+
+    for ((index, message_replies) in response_replies.messages.withIndex()) //go through all the answers of that question (using the timestamp of the question)
+    {
+        if (index > 0){
+            // In file
+            Database.connect("jdbc:sqlite:my.db", "org.sqlite.JDBC")
+            TransactionManager.manager.defaultIsolationLevel = Connection.TRANSACTION_SERIALIZABLE
+
+            transaction {
+                // print sql to std-out
+                addLogger(StdOutSqlLogger)
+                //create table if doesn't exist.
+                SchemaUtils.create (Answers)
+
+                Answers.insert {
+                    it[answer_text] = message_replies.text
+                    it[question_id] = timestamp
+                } get Answers.id
+                //Answers.deleteAll()
+            }
+        }
+    }
+}
+
+fun addQuestion (question: String, timestamp_question: String){
     // In file
     Database.connect("jdbc:sqlite:my.db", "org.sqlite.JDBC")
-// In memory
-    //  Database.connect("jdbc:sqlite:file:test?mode=memory&cache=shared", "org.sqlite.JDBC")
+
     TransactionManager.manager.defaultIsolationLevel = Connection.TRANSACTION_SERIALIZABLE
 
     transaction {
@@ -114,16 +128,17 @@ fun addQuestion (question: String){
         //create table if doesn't exist.
         SchemaUtils.create (Questions)
 
-        // insert new city. SQL: INSERT INTO Cities (name) VALUES ('St. Petersburg')
         Questions.insert {
             it[text] = question
+            it[timestamp] = timestamp_question
+            it[posted] = false
         } get Questions.id
 
-        //Questions.deleteAll()
+       //Questions.deleteAll()
 
         var query = Questions.selectAll()
         query.forEach {
-            println(it[Questions.text])
+           // println(it[Questions.text])
         }
     }
 }
