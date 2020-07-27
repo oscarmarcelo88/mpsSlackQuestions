@@ -6,12 +6,23 @@
 </head>
 <body style="text-align: center; font-family: sans-serif">
 <h1>Questions from MPS Slack Community </h1>
-<hr>
-<#list questionEntries as item>
-    <div>
-        <h3>${item.answers[3].text}</h3>
-    </div>
+<#list questionEntries as question>
+    <hr>
+        <h2>The Question is: ${question.text}</h2>
+    <#list answerEntries as answers>
+        <#if question.timestamp == answers.timestamp>
+            <div>
+                <h5>${answers.text}</h5>
+            </div>
+        </#if>
+    </#list>
+    <form action="/submit" method="post">
+    <input type="checkbox" id="posted" name="question_timestamp" value="${question.timestamp}">
+        <label for="posted"> Posting? </label>
+    <input type="submit" value="Post">
+</form>
 </#list>
+
 <hr>
 <div>
     <h3>Add a new journal entry!</h3>
