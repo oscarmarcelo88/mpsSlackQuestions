@@ -16,23 +16,14 @@
             </div>
         </#if>
     </#list>
+
     <form action="/submit" method="post">
     <input type="checkbox" id="posted" name="question_timestamp" value="${question.timestamp}">
-        <label for="posted"> Posting? </label>
-    <input type="submit" value="Post">
+        <label for="posted"> Posting?</label>
+    <input type="submit" value="Submit">
 </form>
 </#list>
 
 <hr>
-<div>
-    <h3>Add a new journal entry!</h3>
-    <form action="/submit" method="post">
-        <input type="text" name="headline">
-        <br>
-        <textarea name="body"></textarea>
-        <br>
-        <input type="submit">
-    </form>
-</div>
 </body>
 </html>

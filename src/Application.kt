@@ -7,13 +7,18 @@ import io.ktor.application.*
 import io.ktor.routing.*
 import io.ktor.http.*
 import io.ktor.client.*
+import io.ktor.client.features.auth.Auth
+import io.ktor.client.features.auth.providers.basic
 import io.ktor.client.features.json.JacksonSerializer
 import io.ktor.client.features.json.JsonFeature
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.post
 import io.ktor.features.DefaultHeaders
 import io.ktor.freemarker.FreeMarker
 import io.ktor.freemarker.FreeMarkerContent
+import io.ktor.http.auth.HttpAuthHeader
+import io.ktor.http.content.TextContent
 import io.ktor.http.content.resources
 import io.ktor.http.content.static
 import io.ktor.request.receiveParameters
@@ -35,12 +40,12 @@ fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
             outputFormat = HTMLOutputFormat.INSTANCE
         }
             routing {
-
                 static("/static") {
                     resources("files")
                 }
 
-                get("/ss") {
+
+                get("/approval-page") {
                     fetchQuestions()
                     call.respond(FreeMarkerContent("index.ftl", mapOf("questionEntries" to questionEntries, "answerEntries" to answerEntries), ""))
                 }
@@ -49,11 +54,24 @@ fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
                 {
                     val params = call.receiveParameters()
                     val question_timestamp = params["question_timestamp"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+                   val ZendeskToken = null
+                    val userData = "{\"ticket\": {\"subject\": \"Help3\", \"comments\": [{ \"author_id\": 4018454609, \"value\": \"This is a comment\"}]}}"
+                    var client = HttpClient(){
+                        install(Auth){
+                            basic {
+                                username = "oscar.rodriguez@jetbrains.com/token"
+                                password = ZendeskToken
+                            }
+                        }
+                    }
+                    val text = client.post<String>("https://jbs1454063113.zendesk.com/api/v2/imports/tickets.json"){
+                        body = TextContent(userData, contentType = ContentType.Application.Json)
+                    }
                     postQuestion(question_timestamp)
                     call.respond(FreeMarkerContent("submit.ftl", mapOf("questionErased" to question_timestamp), ""))
                 }
 
-                get("/") {
+                get("/real") {
 
                     val client = HttpClient() {
                         install(JsonFeature) {
@@ -162,6 +180,7 @@ fun postQuestion(timestamp_question: String){
     transaction { //Change the posted field to true, which means that it was already posted
         // print sql to std-out
         addLogger(StdOutSqlLogger)
+
         Questions.update ({Questions.timestamp eq timestamp_question}) {
             it[Questions.posted] = true
         }
