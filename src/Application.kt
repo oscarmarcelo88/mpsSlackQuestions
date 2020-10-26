@@ -1,8 +1,6 @@
 package com.example2
 
-import com.amazonaws.samples.S3Sample
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.google.gson.Gson
 import freemarker.cache.ClassTemplateLoader
 import freemarker.core.HTMLOutputFormat
 import io.ktor.application.*
@@ -23,15 +21,11 @@ import io.ktor.http.content.resources
 import io.ktor.http.content.static
 import io.ktor.request.receiveParameters
 import io.ktor.response.respond
-import io.ktor.utils.io.*
-import io.ktor.utils.io.copyTo
-import io.ktor.utils.io.jvm.javaio.*
 import kotlinx.coroutines.*
 import org.jetbrains.exposed.dao.id.IntIdTable
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.TransactionManager
 import org.jetbrains.exposed.sql.transactions.transaction
-import java.io.File
 import java.lang.StringBuilder
 import java.sql.Connection
 
@@ -47,27 +41,6 @@ fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
                     resources("files")
                 }
 
-                get("/test"){
-
-                //Code to upload file to S3
-                    /*
-                        val client = HttpClient()
-                        val myJwtToken = "xoxb-397574785314-1169530478945-fGBdMbOLsUbDroKXipdM9rBB"
-                        val channel =
-                            client.get<ByteReadChannel>("https://files.slack.com/files-pri/TBPGWP398-F01ATDY04V8/download/blog.png") {
-                                header(HttpHeaders.Authorization, "Bearer $myJwtToken")
-                            }
-                        val file = File("/Users/oscar_folder/blog.png")
-                        file.outputStream().use {
-                            channel.copyTo(it)
-                        }
-
-                        val createBucket = S3Sample.amazonMethods ("upload", "prubillapilla118897f1-f572-42af-b8c5-85dde572064b", file)
-*/
-
-
-                }
-
                 get("/approval-page") {
                     fetchQuestions()
                     call.respond(FreeMarkerContent("index.ftl", mapOf("questionEntries" to questionEntries, "answerEntries" to answerEntries), ""))
@@ -78,11 +51,8 @@ fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
                     val params = call.receiveParameters()
                     val question_timestamp = params["question_timestamp"] ?: return@post call.respond(HttpStatusCode.BadRequest)
 
-                    //We need to download the file first before uploading it to Zendesk
-                    val downloadFiles = DownloadFileFromSlackAPI()
-                    downloadFiles.downloadFileLocally(question_timestamp)
 
-                    val ZendeskToken = ""
+                    val ZendeskToken = "ZbQxy4AoDsqbD8rmI53kpTjMjkjWp79uqWenz4F0"
 
                     val client = HttpClient(){
                         install(Auth){
@@ -99,7 +69,7 @@ fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
                     val text = client.post<String>("https://jbs1454063113.zendesk.com/api/v2/imports/tickets.json"){
                         body = TextContent(userData, contentType = ContentType.Application.Json)
                     }
-                    postQuestion(question_timestamp)
+                    //postQuestion(question_timestamp)
                     call.respond(FreeMarkerContent("submit.ftl", mapOf("questionErased" to question_timestamp), ""))
                 }
 
@@ -111,7 +81,7 @@ fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
                         }
                     }
 
-                    val myJwtToken = ""
+                    val myJwtToken = "xoxb-397574785314-1169530478945-s9qgkMw2i9GbxjbgetyqCC8A"
 
                     val response = client.get<Response>("https://slack.com/api/conversations.history?channel=CBQPEPSA2") {
                         header(HttpHeaders.Authorization, "Bearer $myJwtToken")
@@ -248,7 +218,9 @@ fun postQuestion(timestamp_question: String){
         //addLogger(StdOutSqlLogger)
 
         Questions.update ({Questions.timestamp eq timestamp_question}) {
-            it[Questions.posted] = true
+          //  Is commented for testing pruposes
+              it[Questions.posted] = true
+
         }
     }
 }
@@ -284,6 +256,8 @@ fun accessingDB(){
 suspend fun textOfQuestion (timestamp_question: String): String {
     accessingDB()
     val commentBuilder = StringBuilder()
+    //We need to download the file first before uploading it to Zendesk
+    val downloadFiles = DownloadFile()
     transaction { //Change the posted field to true, which means that it was already posted
         // print sql to std-out
         //addLogger(StdOutSqlLogger)
@@ -291,61 +265,32 @@ suspend fun textOfQuestion (timestamp_question: String): String {
         val queryAnswers = Answers.selectAll()
 
             Questions.select{Questions.timestamp eq timestamp_question}.forEach {
-                var imageTokenZendesk = runBlocking {uploadImageToZendesk(it[Questions.path_file])}
-                if (imageTokenZendesk.isNullOrEmpty())
+                if (it[Questions.path_file].isBlank())
                     {
                         commentBuilder.append("{ \"author_id\": 4018454609, \"value\": \"${it[Questions.text]}\"}")
                     } else{
-                        commentBuilder.append("{ \"author_id\": 4018454609, \"value\": \"${it[Questions.text]}\", \"uploads\": [\"bvIYXU9X3rTHUGEiD8E6dljM0\"]}")
-                        //commentBuilder.append("{ \"author_id\": 4018454609, \"value\": \"${it[Questions.text]}\", \"uploads\": [\"${imageTokenZendesk}\"]}")
+                    var imageTokenZendesk = runBlocking {downloadFiles.DownloadFromSlackAndUploadToZendesk(it[Questions.id], true)}
 
+                   // var imageTokenZendesk = runBlocking {downloadFiles.DownloadFromSlackAndUploadToZendesk(it[Questions.id], true)}
+                        commentBuilder.append("{ \"author_id\": 4018454609, \"value\": \"${it[Questions.text]}\", \"uploads\": [\"${imageTokenZendesk}\"]}")
                 }
             }
 
             queryAnswers.forEach {
-                val answerID = Answers.id
-
-                var imageTokenZendeskForAnswer = runBlocking { uploadImageToZendesk(it[Answers.answer_path_file]) }
 
                 if(timestamp_question == it[Answers.question_id])  //Adding the question that have answers and not being posted
                 {
-                    commentBuilder.append(", { \"author_id\": 4018454609, \"value\": \"${it[Answers.answer_text]}\", \"uploads\": [\"${imageTokenZendeskForAnswer}\"]}")
+                    if (it[Answers.answer_path_file].isBlank())
+                    {
+                        commentBuilder.append(", { \"author_id\": 4018454609, \"value\": \"${it[Answers.answer_text]}\"}")
+                    }else{
+                        var imageTokenZendeskForAnswer = runBlocking {downloadFiles.DownloadFromSlackAndUploadToZendesk(it[Answers.id], false)} //We send the answer ID to
+                        commentBuilder.append(", { \"author_id\": 4018454609, \"value\": \"${it[Answers.answer_text]}\", \"uploads\": [\"${imageTokenZendeskForAnswer}\"]}")
+                    }
                 }
             }
-
-
     }
     return commentBuilder.toString()
-}
-
-suspend fun uploadImageToZendesk(pathPost: String): String
-{
-    val ZendeskToken = ""
-    val client = HttpClient(){
-        install(Auth){
-            basic {
-                username = "oscar.rodriguez@jetbrains.com/token"
-                password = ZendeskToken
-            }
-            install(JsonFeature) {
-                serializer = JacksonSerializer()
-            }
-        }
-    }
-    //For uploading the image
-//    val uploadingImage = "{\"filename\":\"test.png\", \"content_url\":\"${pathPost}\",  \"content_type\":\"application/binary\"}"
-    val uploadingImage = "{\"filename\":\"test4.png\", \"content_url\":\"/test4.png\", \"content_type\":\"image/png\"}"
-
-    val textUploadingFile = client.post<String>("https://jbs1454063113.zendesk.com/api/v2/uploads.json"){
-        body = TextContent(uploadingImage, contentType = ContentType.Application.Json)
-    }
-
-
-
-    //we have the image token inside the json, we need to deserialize it
-    val gson = Gson()
-    val tokenImage = gson.fromJson(textUploadingFile, Response_file::class.java)
-    return tokenImage.upload.token
 }
 
 
