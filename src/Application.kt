@@ -30,7 +30,7 @@ import java.lang.StringBuilder
 import java.sql.Connection
 
 fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
-
+val config = ConfigFile()
     fun Application.module() {
         install(FreeMarker) {
             templateLoader = ClassTemplateLoader(this::class.java.classLoader, "templates")
@@ -52,7 +52,7 @@ fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
                     val question_timestamp = params["question_timestamp"] ?: return@post call.respond(HttpStatusCode.BadRequest)
 
 
-                    val ZendeskToken = "ZbQxy4AoDsqbD8rmI53kpTjMjkjWp79uqWenz4F0"
+                    val ZendeskToken = config.ZendeskToken
 
                     val client = HttpClient(){
                         install(Auth){
@@ -65,7 +65,10 @@ fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
                             }
                         }
                     }
-                    val userData = "{\"ticket\": {\"subject\": \"Help5\", \"comments\": [${textOfQuestion(question_timestamp)}]}}"
+                    var userData = "{\"ticket\": {\"subject\": \"Help5\", \"comments\": [${textOfQuestion(question_timestamp)}]}}"
+                    userData = userData.replace("\n", "\\n") //Refactor to add the line breaks to the message
+                    userData = userData.replace("*", "**") // Refactor to add bold text
+                    println("esto es lo que imprimes ${userData}")
                     val text = client.post<String>("https://jbs1454063113.zendesk.com/api/v2/imports/tickets.json"){
                         body = TextContent(userData, contentType = ContentType.Application.Json)
                     }
@@ -81,7 +84,7 @@ fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
                         }
                     }
 
-                    val myJwtToken = "xoxb-397574785314-1169530478945-s9qgkMw2i9GbxjbgetyqCC8A"
+                    val myJwtToken = config.SlackToken
 
                     val response = client.get<Response>("https://slack.com/api/conversations.history?channel=CBQPEPSA2") {
                         header(HttpHeaders.Authorization, "Bearer $myJwtToken")
@@ -100,8 +103,8 @@ fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
                         if (!message.client_msg_id.isNullOrEmpty() || !message.files.isNullOrEmpty()) //We use the clientID to check that it's a user (not a bot) and file not empty to get the messages with files (Idk why when it has a file it has client id= null)
                         {
                             //The following methods are to feed the DB, we still need to check if the question exists or create time ranges.
-                            //addQuestion(message.text, message.ts, message.user.toString(), path_file_question)
-                            //addAnswers(message.ts, client, myJwtToken)
+                          //  addQuestion(message.text, message.ts, message.user.toString(), path_file_question)
+                           // addAnswers(message.ts, client, myJwtToken)
                         }
                     }
                 }
@@ -236,7 +239,7 @@ fun addQuestion (question: String, timestamp_question: String, askerID: String, 
         //addLogger(StdOutSqlLogger)
         //create table if doesn't exist.
         SchemaUtils.create (Questions)
-
+        println ("el mensaje es: ${question}")
         Questions.insert {
             it[text] = question
             it[timestamp] = timestamp_question
@@ -267,12 +270,12 @@ suspend fun textOfQuestion (timestamp_question: String): String {
             Questions.select{Questions.timestamp eq timestamp_question}.forEach {
                 if (it[Questions.path_file].isBlank())
                     {
-                        commentBuilder.append("{ \"author_id\": 4018454609, \"value\": \"${it[Questions.text]}\"}")
+                        commentBuilder.append("{ \"author_id\": 4018454609, \"body\": \"${it[Questions.text]}\"}")
                     } else{
                     var imageTokenZendesk = runBlocking {downloadFiles.DownloadFromSlackAndUploadToZendesk(it[Questions.id], true)}
 
                    // var imageTokenZendesk = runBlocking {downloadFiles.DownloadFromSlackAndUploadToZendesk(it[Questions.id], true)}
-                        commentBuilder.append("{ \"author_id\": 4018454609, \"value\": \"${it[Questions.text]}\", \"uploads\": [\"${imageTokenZendesk}\"]}")
+                        commentBuilder.append("{ \"author_id\": 4018454609, \"body\": \"${it[Questions.text]}\", \"uploads\": [\"${imageTokenZendesk}\"]}")
                 }
             }
 
@@ -282,10 +285,10 @@ suspend fun textOfQuestion (timestamp_question: String): String {
                 {
                     if (it[Answers.answer_path_file].isBlank())
                     {
-                        commentBuilder.append(", { \"author_id\": 4018454609, \"value\": \"${it[Answers.answer_text]}\"}")
+                        commentBuilder.append(", { \"author_id\": 4018454609, \"body\": \"${it[Answers.answer_text]}\"}")
                     }else{
                         var imageTokenZendeskForAnswer = runBlocking {downloadFiles.DownloadFromSlackAndUploadToZendesk(it[Answers.id], false)} //We send the answer ID to
-                        commentBuilder.append(", { \"author_id\": 4018454609, \"value\": \"${it[Answers.answer_text]}\", \"uploads\": [\"${imageTokenZendeskForAnswer}\"]}")
+                        commentBuilder.append(", { \"author_id\": 4018454609, \"body\": \"${it[Answers.answer_text]}\", \"uploads\": [\"${imageTokenZendeskForAnswer}\"]}")
                     }
                 }
             }

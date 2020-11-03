@@ -26,6 +26,7 @@ public class DownloadFile{
     @JsonIgnoreProperties(ignoreUnknown = true)
     class Message_files(val token: String)
 
+    val config = ConfigFile()
     suspend fun DownloadFromSlackAndUploadToZendesk(postID: EntityID<Int>, QuestionFile: Boolean): String {
 
         Database.connect("jdbc:sqlite:my.db", "org.sqlite.JDBC")
@@ -49,7 +50,7 @@ public class DownloadFile{
         //works!
             val client = HttpClient()
 
-            val myJwtToken = "xoxb-397574785314-1169530478945-s9qgkMw2i9GbxjbgetyqCC8A"
+            val myJwtToken = config.SlackToken
             val channel =
                 client.get<ByteReadChannel>(pathOfFile) {
                     header(HttpHeaders.Authorization, "Bearer $myJwtToken")
@@ -66,12 +67,11 @@ public class DownloadFile{
                 install(Auth) {
                     basic {
                         username = "oscar.rodriguez@jetbrains.com/token"
-                        password = "ZbQxy4AoDsqbD8rmI53kpTjMjkjWp79uqWenz4F0"
+                        password = config.ZendeskToken
                     }
                 }
             }
-            val file = File("/Users/oscar_folder/IdeaProjects/ktor-firstProject/src/test4.png")
-            println(file.exists())
+
             val resp = clientZendesk.post<String>("https://jbs1454063113.zendesk.com/api/v2/uploads.json?filename=${nameOfFile}") {
                 header("application", "binary")
                 body = content
