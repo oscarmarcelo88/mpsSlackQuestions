@@ -4,30 +4,30 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import freemarker.cache.ClassTemplateLoader
 import freemarker.core.HTMLOutputFormat
 import io.ktor.application.*
-import io.ktor.routing.*
-import io.ktor.http.*
 import io.ktor.client.*
-import io.ktor.client.features.auth.Auth
-import io.ktor.client.features.auth.providers.basic
-import io.ktor.client.features.json.JacksonSerializer
-import io.ktor.client.features.json.JsonFeature
-import io.ktor.client.request.get
-import io.ktor.client.request.header
-import io.ktor.client.request.post
-import io.ktor.freemarker.FreeMarker
-import io.ktor.freemarker.FreeMarkerContent
-import io.ktor.http.content.TextContent
-import io.ktor.http.content.resources
-import io.ktor.http.content.static
-import io.ktor.request.receiveParameters
-import io.ktor.response.respond
-import kotlinx.coroutines.*
+import io.ktor.client.features.auth.*
+import io.ktor.client.features.auth.providers.*
+import io.ktor.client.features.json.*
+import io.ktor.client.request.*
+import io.ktor.freemarker.*
+import io.ktor.http.*
+import io.ktor.http.content.*
+import io.ktor.request.*
+import io.ktor.response.*
+import io.ktor.routing.*
+import io.ktor.utils.io.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 import org.jetbrains.exposed.dao.id.IntIdTable
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.TransactionManager
 import org.jetbrains.exposed.sql.transactions.transaction
-import java.lang.StringBuilder
+import sun.misc.IOUtils
+import java.io.File
+import java.io.FileInputStream
 import java.sql.Connection
+import java.util.*
+
 
 fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
 val config = ConfigFile()
@@ -43,15 +43,46 @@ val config = ConfigFile()
 
                 get("/approval-page") {
                     fetchQuestions()
-                    call.respond(FreeMarkerContent("index.ftl", mapOf("questionEntries" to questionEntries, "answerEntries" to answerEntries), ""))
+                    //try to fetch the images in base64
+     /*               val img = File("/Users/oscar_folder/IdeaProjects/ktor-firstProject/resources/files/test.png")
+                    val imgBytes: ByteArray = com.amazonaws.util.IOUtils.toByteArray(FileInputStream(img))
+                    val imgBytesAsBase64: ByteArray= com.amazonaws.util.Base64.encode(imgBytes)
+                    val imgDataAsBase64 = String(imgBytesAsBase64)
+                    val imgAsBase64 = "data:image/png;base64,$imgDataAsBase64"*/
+
+
+                        val client = HttpClient()
+
+                        val myJwtToken = config.SlackToken
+
+                        val channel =
+                            client.get<ByteArray>("https://files.slack.com/files-pri/TBPGWP398-F01DER8254J/download/collapse.png") {
+                                header(HttpHeaders.Authorization, "Bearer $myJwtToken")
+                            }
+                    val imgBytesAsBase642: ByteArray= com.amazonaws.util.Base64.encode(channel)
+                    val imgDataAsBase642 = String(imgBytesAsBase642)
+                    val imgAsBase64_2 = "data:image/png;base64,$imgDataAsBase642"
+
+                        call.respond(
+                            FreeMarkerContent(
+                                "index.ftl", mapOf(
+                                    "questionEntries" to questionEntries,
+                                    "answerEntries" to answerEntries,
+                                    "filesEntries" to filesEntries
+                                ), ""
+                            )
+                        )
+
+
+
+
+
                 }
 
-                post ("/submit")
+                post("/submit")
                 {
                     val params = call.receiveParameters()
                     val question_timestamp = params["question_timestamp"] ?: return@post call.respond(HttpStatusCode.BadRequest)
-
-
                     val ZendeskToken = config.ZendeskToken
 
                     val client = HttpClient(){
@@ -65,10 +96,12 @@ val config = ConfigFile()
                             }
                         }
                     }
-                    var userData = "{\"ticket\": {\"subject\": \"Help5\", \"comments\": [${textOfQuestion(question_timestamp)}]}}"
+                    var userData = "{\"ticket\": {\"subject\": \"Help5\", \"comments\": [${textOfQuestion(
+                        question_timestamp
+                    )}]}}"
                     userData = userData.replace("\n", "\\n") //Refactor to add the line breaks to the message
                     userData = userData.replace("*", "**") // Refactor to add bold text
-                    println("esto es lo que imprimes ${userData}")
+                    //println("esto es lo que imprimes ${userData}")
                     val text = client.post<String>("https://jbs1454063113.zendesk.com/api/v2/imports/tickets.json"){
                         body = TextContent(userData, contentType = ContentType.Application.Json)
                     }
@@ -103,7 +136,7 @@ val config = ConfigFile()
                         if (!message.client_msg_id.isNullOrEmpty() || !message.files.isNullOrEmpty()) //We use the clientID to check that it's a user (not a bot) and file not empty to get the messages with files (Idk why when it has a file it has client id= null)
                         {
                             //The following methods are to feed the DB, we still need to check if the question exists or create time ranges.
-                          //  addQuestion(message.text, message.ts, message.user.toString(), path_file_question)
+                           // addQuestion(message.text, message.ts, message.user.toString(), path_file_question)
                            // addAnswers(message.ts, client, myJwtToken)
                         }
                     }
@@ -160,10 +193,14 @@ fun fetchQuestions(){
             val temp_QuestionText = it[Questions.text]
             val temp_QuestionTimestamp = it[Questions.timestamp]
              val temp_QuestionPosted= it[Questions.posted]
+             val temp_QuestionPath = it[Questions.path_file]
             queryAnswers.forEach {
                 if(temp_QuestionTimestamp == it[Answers.question_id] && !temp_QuestionPosted)  //Adding the question that have answers and not being posted
                 {
-                    questionEntries.add(0, QuestionEntry(temp_QuestionText, temp_QuestionTimestamp))
+                    questionEntries.add(0, QuestionEntry(temp_QuestionText, temp_QuestionTimestamp, temp_QuestionPath))
+                    if (temp_QuestionPath.isNotEmpty()){
+                        runBlocking { filesEntries.add(0, FilesEntry(convertFilestoBase64(temp_QuestionPath), temp_QuestionTimestamp)) }
+                    }
                     return@loopQuestion //jump back to the previous loop to avoid duplication of the question.
                 }
             }
@@ -172,6 +209,20 @@ fun fetchQuestions(){
             answerEntries.add(0, AnswerEntry(it[Answers.answer_text], it[Answers.question_id]))
         }
     }
+}
+
+suspend fun convertFilestoBase64 (filePath: String): String {
+
+    val client = HttpClient()
+    val myJwtToken = config.SlackToken
+    val channel =
+        client.get<ByteArray>(filePath) {
+            header(HttpHeaders.Authorization, "Bearer $myJwtToken")
+        }
+    val imgBytesAsBase642: ByteArray= com.amazonaws.util.Base64.encode(channel)
+    val imgDataAsBase642 = String(imgBytesAsBase642)
+    val imgAsBase64_2 = "data:image/png;base64,$imgDataAsBase642"
+    return imgAsBase64_2
 }
 
 suspend fun addAnswers(timestamp: String, client: HttpClient, token: String) {
@@ -197,11 +248,11 @@ suspend fun addAnswers(timestamp: String, client: HttpClient, token: String) {
                 // print sql to std-out
               //  addLogger(StdOutSqlLogger)
                 //create table if doesn't exist.
-                SchemaUtils.create (Answers)
+                SchemaUtils.create(Answers)
 
                 Answers.insert {
                     it[answer_text] = message_replies.text
-                    it[question_id] = timestamp
+                    it[question_id] = timestamp.replace(".", "")
                     it[answer_userID] = message_replies.user.toString()
                     it[answer_path_file] = path_file_answer
                 } get Answers.id
@@ -220,7 +271,7 @@ fun postQuestion(timestamp_question: String){
         // print sql to std-out
         //addLogger(StdOutSqlLogger)
 
-        Questions.update ({Questions.timestamp eq timestamp_question}) {
+        Questions.update({ Questions.timestamp eq timestamp_question }) {
           //  Is commented for testing pruposes
               it[Questions.posted] = true
 
@@ -228,7 +279,7 @@ fun postQuestion(timestamp_question: String){
     }
 }
 
-fun addQuestion (question: String, timestamp_question: String, askerID: String, path_file_question: String){
+fun addQuestion(question: String, timestamp_question: String, askerID: String, path_file_question: String){
 
     accessingDB()
     transaction {
@@ -238,11 +289,11 @@ fun addQuestion (question: String, timestamp_question: String, askerID: String, 
         // print sql to std-out
         //addLogger(StdOutSqlLogger)
         //create table if doesn't exist.
-        SchemaUtils.create (Questions)
-        println ("el mensaje es: ${question}")
+        SchemaUtils.create(Questions)
+        println("el mensaje es: ${question}")
         Questions.insert {
             it[text] = question
-            it[timestamp] = timestamp_question
+            it[timestamp] = timestamp_question.replace(".", "")
             it[posted] = false
             it[question_userID] = askerID
             it[path_file] = path_file_question //hardcoded to test adding an image to Zendesk
@@ -256,7 +307,7 @@ fun accessingDB(){
     TransactionManager.manager.defaultIsolationLevel = Connection.TRANSACTION_SERIALIZABLE
 }
 
-suspend fun textOfQuestion (timestamp_question: String): String {
+suspend fun textOfQuestion(timestamp_question: String): String {
     accessingDB()
     val commentBuilder = StringBuilder()
     //We need to download the file first before uploading it to Zendesk
@@ -272,7 +323,10 @@ suspend fun textOfQuestion (timestamp_question: String): String {
                     {
                         commentBuilder.append("{ \"author_id\": 4018454609, \"body\": \"${it[Questions.text]}\"}")
                     } else{
-                    var imageTokenZendesk = runBlocking {downloadFiles.DownloadFromSlackAndUploadToZendesk(it[Questions.id], true)}
+                    var imageTokenZendesk = runBlocking {downloadFiles.DownloadFromSlackAndUploadToZendesk(
+                        it[Questions.id],
+                        true
+                    )}
 
                    // var imageTokenZendesk = runBlocking {downloadFiles.DownloadFromSlackAndUploadToZendesk(it[Questions.id], true)}
                         commentBuilder.append("{ \"author_id\": 4018454609, \"body\": \"${it[Questions.text]}\", \"uploads\": [\"${imageTokenZendesk}\"]}")
@@ -287,7 +341,10 @@ suspend fun textOfQuestion (timestamp_question: String): String {
                     {
                         commentBuilder.append(", { \"author_id\": 4018454609, \"body\": \"${it[Answers.answer_text]}\"}")
                     }else{
-                        var imageTokenZendeskForAnswer = runBlocking {downloadFiles.DownloadFromSlackAndUploadToZendesk(it[Answers.id], false)} //We send the answer ID to
+                        var imageTokenZendeskForAnswer = runBlocking {downloadFiles.DownloadFromSlackAndUploadToZendesk(
+                            it[Answers.id],
+                            false
+                        )} //We send the answer ID to
                         commentBuilder.append(", { \"author_id\": 4018454609, \"body\": \"${it[Answers.answer_text]}\", \"uploads\": [\"${imageTokenZendeskForAnswer}\"]}")
                     }
                 }
