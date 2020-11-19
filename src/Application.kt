@@ -43,12 +43,6 @@ val config = ConfigFile()
 
                 get("/approval-page") {
                     fetchQuestions()
-                    //try to fetch the images in base64
-     /*               val img = File("/Users/oscar_folder/IdeaProjects/ktor-firstProject/resources/files/test.png")
-                    val imgBytes: ByteArray = com.amazonaws.util.IOUtils.toByteArray(FileInputStream(img))
-                    val imgBytesAsBase64: ByteArray= com.amazonaws.util.Base64.encode(imgBytes)
-                    val imgDataAsBase64 = String(imgBytesAsBase64)
-                    val imgAsBase64 = "data:image/png;base64,$imgDataAsBase64"*/
 
 
                         val client = HttpClient()
@@ -68,7 +62,8 @@ val config = ConfigFile()
                                 "index.ftl", mapOf(
                                     "questionEntries" to questionEntries,
                                     "answerEntries" to answerEntries,
-                                    "filesEntries" to filesEntries
+                                    "filesEntries" to filesEntries,
+                                    "filesEntries_answers" to filesEntries_answers
                                 ), ""
                             )
                         )
@@ -207,6 +202,9 @@ fun fetchQuestions(){
         }
         queryAnswers.forEach {
             answerEntries.add(0, AnswerEntry(it[Answers.answer_text], it[Answers.question_id]))
+            if(it[Answers.answer_path_file].isNotEmpty()){
+                runBlocking { filesEntries_answers.add(0, FilesEntry_answers(convertFilestoBase64(it[Answers.answer_path_file]), it[Answers.question_id])) }
+            }
         }
     }
 }
