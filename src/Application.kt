@@ -43,16 +43,14 @@ val config = ConfigFile()
 
                 get("/approval-page") {
                     fetchQuestions()
-
-
                         val client = HttpClient()
-
                         val myJwtToken = config.SlackToken
-
                         val channel =
                             client.get<ByteArray>("https://files.slack.com/files-pri/TBPGWP398-F01DER8254J/download/collapse.png") {
                                 header(HttpHeaders.Authorization, "Bearer $myJwtToken")
                             }
+
+                    //I think I don't need the following, because I decided not to use AWS. Test: TODO()
                     val imgBytesAsBase642: ByteArray= com.amazonaws.util.Base64.encode(channel)
                     val imgDataAsBase642 = String(imgBytesAsBase642)
                     val imgAsBase64_2 = "data:image/png;base64,$imgDataAsBase642"
@@ -67,10 +65,6 @@ val config = ConfigFile()
                                 ), ""
                             )
                         )
-
-
-
-
 
                 }
 
@@ -96,7 +90,7 @@ val config = ConfigFile()
                     )}]}}"
                     userData = userData.replace("\n", "\\n") //Refactor to add the line breaks to the message
                     userData = userData.replace("*", "**") // Refactor to add bold text
-                    //println("esto es lo que imprimes ${userData}")
+                    println("esto es lo que imprimes ${userData}")
                     val text = client.post<String>("https://jbs1454063113.zendesk.com/api/v2/imports/tickets.json"){
                         body = TextContent(userData, contentType = ContentType.Application.Json)
                     }
@@ -104,7 +98,7 @@ val config = ConfigFile()
                     call.respond(FreeMarkerContent("submit.ftl", mapOf("questionErased" to question_timestamp), ""))
                 }
 
-                get("/") {
+                get("/add-questions") {
 
                     val client = HttpClient() {
                         install(JsonFeature) {
@@ -114,7 +108,7 @@ val config = ConfigFile()
 
                     val myJwtToken = config.SlackToken
 
-                    val response = client.get<Response>("https://slack.com/api/conversations.history?channel=CBQPEPSA2") {
+                    val response = client.get<Response>("https://slack.com/api/conversations.history?channel=${config.Slack_Channel_id}") {
                         header(HttpHeaders.Authorization, "Bearer $myJwtToken")
                     }
                     var path_file_question = ""
@@ -131,8 +125,8 @@ val config = ConfigFile()
                         if (!message.client_msg_id.isNullOrEmpty() || !message.files.isNullOrEmpty()) //We use the clientID to check that it's a user (not a bot) and file not empty to get the messages with files (Idk why when it has a file it has client id= null)
                         {
                             //The following methods are to feed the DB, we still need to check if the question exists or create time ranges.
-                           // addQuestion(message.text, message.ts, message.user.toString(), path_file_question)
-                           // addAnswers(message.ts, client, myJwtToken)
+                            addQuestion(message.text, message.ts, message.user.toString(), path_file_question)
+                            addAnswers(message.ts, client, myJwtToken)
                         }
                     }
                 }
@@ -176,6 +170,7 @@ object Answers: IntIdTable() {
 
 fun fetchQuestions(){
     accessingDB()
+    questionEntries.clear() //to clear the content of the constructor
     transaction {
         // print sql to std-out
        // addLogger(StdOutSqlLogger)
@@ -189,9 +184,10 @@ fun fetchQuestions(){
             val temp_QuestionTimestamp = it[Questions.timestamp]
              val temp_QuestionPosted= it[Questions.posted]
              val temp_QuestionPath = it[Questions.path_file]
-            queryAnswers.forEach {
+             queryAnswers.forEach {
                 if(temp_QuestionTimestamp == it[Answers.question_id] && !temp_QuestionPosted)  //Adding the question that have answers and not being posted
                 {
+
                     questionEntries.add(0, QuestionEntry(temp_QuestionText, temp_QuestionTimestamp, temp_QuestionPath))
                     if (temp_QuestionPath.isNotEmpty()){
                         runBlocking { filesEntries.add(0, FilesEntry(convertFilestoBase64(temp_QuestionPath), temp_QuestionTimestamp)) }
@@ -201,9 +197,9 @@ fun fetchQuestions(){
             }
         }
         queryAnswers.forEach {
-            answerEntries.add(0, AnswerEntry(it[Answers.answer_text], it[Answers.question_id]))
+            answerEntries.add(0, AnswerEntry(it[Answers.answer_text], it[Answers.question_id], it[Answers.id]))
             if(it[Answers.answer_path_file].isNotEmpty()){
-                runBlocking { filesEntries_answers.add(0, FilesEntry_answers(convertFilestoBase64(it[Answers.answer_path_file]), it[Answers.question_id])) }
+                runBlocking { filesEntries_answers.add(0, FilesEntry_answers(convertFilestoBase64(it[Answers.answer_path_file]), it[Answers.question_id], it[Answers.id]))  }
             }
         }
     }
@@ -224,7 +220,7 @@ suspend fun convertFilestoBase64 (filePath: String): String {
 }
 
 suspend fun addAnswers(timestamp: String, client: HttpClient, token: String) {
-    val response_replies = client.get<Response>("https://slack.com/api/conversations.replies?channel=CBQPEPSA2&ts=$timestamp"){
+    val response_replies = client.get<Response>("https://slack.com/api/conversations.replies?channel=${config.Slack_Channel_id}&ts=$timestamp"){
         header(HttpHeaders.Authorization, "Bearer $token")
     }
 
@@ -288,7 +284,6 @@ fun addQuestion(question: String, timestamp_question: String, askerID: String, p
         //addLogger(StdOutSqlLogger)
         //create table if doesn't exist.
         SchemaUtils.create(Questions)
-        println("el mensaje es: ${question}")
         Questions.insert {
             it[text] = question
             it[timestamp] = timestamp_question.replace(".", "")
@@ -321,10 +316,10 @@ suspend fun textOfQuestion(timestamp_question: String): String {
                     {
                         commentBuilder.append("{ \"author_id\": 4018454609, \"body\": \"${it[Questions.text]}\"}")
                     } else{
-                    var imageTokenZendesk = runBlocking {downloadFiles.DownloadFromSlackAndUploadToZendesk(
-                        it[Questions.id],
-                        true
-                    )}
+                        val imageTokenZendesk = runBlocking {downloadFiles.DownloadFromSlackAndUploadToZendesk(
+                            it[Questions.id],
+                            true
+                        )}
 
                    // var imageTokenZendesk = runBlocking {downloadFiles.DownloadFromSlackAndUploadToZendesk(it[Questions.id], true)}
                         commentBuilder.append("{ \"author_id\": 4018454609, \"body\": \"${it[Questions.text]}\", \"uploads\": [\"${imageTokenZendesk}\"]}")
@@ -335,11 +330,11 @@ suspend fun textOfQuestion(timestamp_question: String): String {
 
                 if(timestamp_question == it[Answers.question_id])  //Adding the question that have answers and not being posted
                 {
-                    if (it[Answers.answer_path_file].isBlank())
+                    if (it[Answers.answer_path_file].isBlank()) //Checking if there is a file (path is not empty)
                     {
                         commentBuilder.append(", { \"author_id\": 4018454609, \"body\": \"${it[Answers.answer_text]}\"}")
                     }else{
-                        var imageTokenZendeskForAnswer = runBlocking {downloadFiles.DownloadFromSlackAndUploadToZendesk(
+                        val imageTokenZendeskForAnswer = runBlocking {downloadFiles.DownloadFromSlackAndUploadToZendesk(
                             it[Answers.id],
                             false
                         )} //We send the answer ID to

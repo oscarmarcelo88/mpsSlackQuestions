@@ -8,7 +8,7 @@
 <h1>Questions from MPS Slack Community </h1>
 <#list questionEntries as question>
     <hr>
-    <a href="https://testisky.slack.com/archives/CBQPEPSA2/p${question.timestamp}"><h2>The Question is: ${question.text}</h2></a>
+    <a href="https://testisky.slack.com/archives/C3YUV3YK0/p${question.timestamp}"><h2>The Question is: ${question.text}</h2></a>
 
     <#list filesEntries as files>
         <#if question.timestamp == files.fileEntry_timestamp_question>
@@ -18,9 +18,13 @@
     <#list answerEntries as answers>
         <#if question.timestamp == answers.timestamp>
             <div>
-                <h5>${answers.text}</h5>
+                <h5 id="answer_text">${answers.text}</h5>
                 <#list filesEntries_answers as files_answers>
+<#--
                     <#if question.timestamp == files_answers.fileEntry_timestamp_answers>
+-->
+                    <#if question.timestamp == files_answers.fileEntry_timestamp_answers && answers.id_answer == files_answers.id_answer>
+
                         <img id="2" alt="answer files" src="${files_answers.base64Files}" style="max-height: 300px; max-width: 300px;"/>
                     </#if>
                 </#list>

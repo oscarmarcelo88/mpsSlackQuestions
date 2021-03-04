@@ -77,7 +77,7 @@ public class DownloadFile{
                 body = content
                 //body = LocalFileContent(file)
             }
-            println(resp)
+            println("esta es la respuesta:$resp")
 
         //we have the image token inside the json, we need to deserialize it
         val gson = Gson()
