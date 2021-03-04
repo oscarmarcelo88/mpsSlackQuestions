@@ -41,6 +41,9 @@ val config = ConfigFile()
                     resources("files")
                 }
 
+                get("/") {
+                    call.respond("holi")
+                }
                 get("/approval-page") {
                     fetchQuestions()
                         val client = HttpClient()
